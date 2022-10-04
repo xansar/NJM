@@ -3,9 +3,6 @@ import time,datetime
 import random
 import pickle
 
-# torch
-from torch.utils.data import Dataset
-
 
 def Normalization_gowalla(inX):
     return 1.0 / (1 + np.exp(-inX))
@@ -45,6 +42,7 @@ class Dataset(object):
         self.spot_enum = {}
         # 　self.links: {user1ID: [[user2ID, step], [user3ID, step],...],...}
         # 包含所有社交关系中的用户，采用了单向边的记录法，记录了第一位用户，有可能存在漏掉的用户
+        # self.links: {user1ID: [[user2ID, step], [user3ID, step], ...], ...}
         self.links = {}
         # 　self.links_array: {user1ID: [user2ID, user3ID,...],...}
         self.links_array = {}
@@ -101,7 +99,7 @@ class Dataset(object):
 
 
     def get_inter_data(self):
-        # 保存交互的记录
+        # 保存交互的记录，只用了训练集的数据
         # rating数据集组织：userID itemID rating step
         user_r = {} # 存储用户-物品交互列表，user: [item1, item2...]
         count = 0
@@ -210,8 +208,9 @@ class Dataset(object):
     def get_train_data_by_id(self, id=0):
         res = {}
         # self.train_step 表示用前t轮的数据训练
-        # rating_indicator
+        # rating_indicator表明哪些step发生了互动
         rating_indicator = np.zeros(self.train_step, dtype='int32')
+        # 标记这次互动发生在第几个step
         rating_pre = np.zeros(self.train_step, dtype='float32')
         spot_attr = []  # 与这条互动中的物品有过交互的其他用户 [[userID,rating,step],...]
         link_res = []   # 当前用户邻接的好友及step [[userID,step],...]
@@ -219,6 +218,7 @@ class Dataset(object):
         # self.train_id_list[id]是一条记录: [userID, itemID]
         # user1ID in all_users_set
         if self.train_id_list[id][0]  in self.user_dict.keys():
+            # user_dict[i]是用户i的物品交互列表
             for record in self.user_dict[self.train_id_list[id][0]]:
                 # record: [itemID,rating,step]
                 if record[0] == self.train_id_list[id][1]:
@@ -255,9 +255,9 @@ class Dataset(object):
 
     def get_train_data(self):
         print("start getting train_data...")
-        res_t = {}
+        res_t = {}  # {idx: one_data}
         # self.train_id_list里每条记录就是一次用户-物品互动，其中训练数据中没有出现的用户都被赋予了1-20这二十条记录
-        for i in range(len(self.train_id_list)):
+        for i in range(len(self.train_id_list)):    # 循环长度为所有互动次数
             res_one = self.get_train_data_by_id(id = i)
             res_t[i] = res_one
         print("finish getting train_data...")
@@ -287,11 +287,14 @@ class Dataset(object):
         f.close()
 
         test_data = {}
+        # 所有的互动列表，[(user,item),...]
         test_data['ids'] = self.test_id_list
+        # 所有的评分列表，[r1，r2,...]
         test_data['rating'] = self.test_rating_list
+        # inter_data的数据
         test_data['user_dict'] = self.user_dict
         test_data['spot_dict'] = self.spot_dict
-        test_data['links'] = self.links
+        test_data['links'] = self.links # 这里没有修改links
         print("finish getting test rating...")
         with open("data/test_rating_"+self.data_name+".pkl", 'wb') as f:
             pickle.dump(test_data, f)
@@ -299,7 +302,9 @@ class Dataset(object):
     def get_test_link(self):
         # 最后一个step的link，{user1:[user2,user3,...],...}
         self.last_pre = {}
-        # links_array的扩充，把训练集中没有出现的也加入到字典中，{user1:[user2,user3,...],...}
+        # links_array的扩充，把训练集中没有出现的也加入到字典中
+        # {user1:[user2,user3,...], user2:[],...}
+        # 应该表示用来辅助预测的好友关系
         self.till_record = {}
         print("start getting test link...")
         f = open("data/"+self.data_name+".test.link") 

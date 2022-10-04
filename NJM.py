@@ -75,7 +75,7 @@ class NJM:
 		self.user_node_N = user_id_N + 1
 		self.user_attr_M = user_attr_M + 1
 		self.item_node_N = item_id_N + 1
-		self.item_attr_M = item_attr_M + 1
+		self.item_attr_M = item_attr_M + 1	# 这个特征维度跟用户数量一样，说明特征记录的是被谁互动过
 		self.data_name = data_name
 		self.batch_size = batch_size
 		self.alphaU = beta
@@ -87,7 +87,7 @@ class NJM:
 			# -------------------------------------------------------------------------------------------------------------------
 			'user_latent': tf.Variable(tf.random_normal([self.user_node_N, self.train_T, self.embedding_size]),
 									   name='user_latent'),
-
+			# neighbourhood embedding
 			'node_proximity': tf.Variable(
 				tf.random_normal([self.user_node_N, self.train_T, self.embedding_size]),
 				name='node_proximity'),
@@ -100,24 +100,24 @@ class NJM:
 
 			'item_rnn_out_rating': tf.Variable(tf.random_normal([self.embedding_size, self.embedding_size]),
 											   name='item_rnn_out'),
-
+			# 消费计算中消费影响u和社交影响p的平衡
 			'consumption_balance': tf.Variable(tf.random_normal([self.user_node_N], mean=0.5, stddev=0.5),
 											   name='consumption_balance'),
-
+			# 好友计算中消费影响u和社交影响p的平衡
 			'link_balance': tf.Variable(tf.truncated_normal([self.user_node_N], mean=0.5, stddev=0.5),
 										name='link_balance'),
 
 		}
 		biases = {
 			'item_out_rating': tf.Variable(tf.constant(0.1, shape=[self.item_node_N, self.embedding_size]), name='b1'),
-
+			# 这个没有用到
 			'item_out_link': tf.Variable(tf.constant(0.1, shape=[self.item_node_N, self.embedding_size]), name='b2'),
-
+			#
 			'user_static': tf.Variable(tf.constant(0.1, shape=[self.user_node_N, self.embedding_size]), name='b3'),
 			'item_static': tf.Variable(tf.constant(0.1, shape=[self.item_node_N, self.embedding_size]), name='b4'),
-
+			# 没用到
 			'mlp_embeddings': tf.Variable(tf.constant(0.1, shape=[self.embedding_size]), name='b6'),
-
+			# 这个是mlp通用的bias，先不用
 			'link_mlp_embeddings': tf.Variable(tf.constant(0.1, shape=[self.user_node_N]), name='b7')
 
 		}
@@ -134,7 +134,7 @@ class NJM:
 
 		self.train_rating_indicator = tf.placeholder(tf.float32, shape=[None, time_step])
 
-
+		# item在那个时刻被哪个用户打分
 		self.train_item_attr = tf.placeholder(tf.float32, shape=[None, time_step, self.user_node_N])
 		self.train_rating_label = tf.placeholder(tf.float32, shape=[None, time_step])
 
@@ -175,11 +175,13 @@ class NJM:
 		train_item_id_list = tf.reshape(self.train_item_id_list, [-1])
 		#   Model
 
+		# 这一部分是item rnn的
 		train_item_attr = tf.reshape(self.train_item_attr, [-1, self.item_attr_M])
+		# item特征，记录item跟谁互动过，然后查表得到嵌入
 		item_attr_embed = tf.matmul(train_item_attr, self.weights['item_attr_embeddings'])
-
+		# 时间长度×维度
 		item_rnn_input = tf.reshape(item_attr_embed, [-1, self.train_T, self.embedding_size])
-
+		# basic cell 输入输出维度一致
 		item_cell = rnn_cell.LayerNormBasicLSTMCell(self.embedding_size)
 
 		self.item_init_state = item_cell.zero_state(self.batch_size, dtype=tf.float32)
@@ -189,13 +191,15 @@ class NJM:
 															   initial_state=self.item_init_state,
 															   dtype=tf.float32)
 			item_output = tf.reshape(item_output, [-1, self.embedding_size])
+			# item经过rnn后有一个仿射变换
 			item_affine_rating = tf.matmul(item_output, self.weights['item_rnn_out_rating']) + tf.nn.embedding_lookup(
 				self.biases[
-					'item_out_rating'], train_item_id_list)
+					'item_out_rating'], train_item_id_list)	# train_item_id_list就是一个train_T长度，每个值都是spotid的向量
+			# [bsz,t,d]每个时刻都有一个特征
 			item_affine_rating = tf.reshape(item_affine_rating, [-1, time_step, self.embedding_size])
-
+		# u
 		user_latent_vector = tf.nn.embedding_lookup(self.weights['user_latent'], self.train_user_id)
-
+		# p
 		user_latent_promixity = tf.nn.embedding_lookup(self.weights['node_proximity'], self.train_user_id)
 
 		consumption_weigh = tf.nn.embedding_lookup(self.weights['consumption_balance'], self.train_user_id)
@@ -209,12 +213,12 @@ class NJM:
 			if t == 0:
 
 				# -------------------------
-				# add hidden layers here
-
+				# add hidden layers here， 这是模型图的左上角部分
+				# user_latent_vector每个时刻都用一个placeholder保存
 				user_latent_self = user_latent_vector[:, 0, :]
-
+				# u和q_hair拼接
 				embed_layer = tf.concat([user_latent_self, self.ini_social_vector], -1)
-
+				# 输出uhat
 				user_output = tf.layers.dense(inputs=embed_layer, units=self.embedding_size,
 											  activation=tf.nn.relu,
 											  kernel_regularizer=tf.contrib.layers.l2_regularizer(
@@ -224,20 +228,23 @@ class NJM:
 
 				b_user = tf.nn.embedding_lookup(self.biases['user_static'], self.train_user_id)
 				b_item = tf.nn.embedding_lookup(self.biases['item_static'], self.train_item_id)
+				# 静态bias初始值为0.1，可以更新。
+				# bsz*d,tf.multiply按位乘法，这一部分的在论文objective里面
 				rating_prediction = tf.multiply(user_output, item_affine_rating[:, t, :]) + tf.multiply(b_user, b_item)
-				rating_prediction = tf.reduce_sum(rating_prediction, axis=-1)
+				rating_prediction = tf.reduce_sum(rating_prediction, axis=-1)# 求和的
 
 				rating_prediction = tf.sigmoid(rating_prediction)
 				tf.add_to_collection("predict_loss", tf.reduce_sum(
-					tf.square(rating_prediction - self.train_rating_label[:, t]) * self.train_rating_indicator[:, t]))
+					tf.square(rating_prediction - self.train_rating_label[:, t]) * self.train_rating_indicator[:, t]))	# 后面这项就是真实标签
 
 				# ----------------------------------
 				# link prediction
-
+				# user_n * 2d,这个是右上角的E
 				user_embedding_matrix = tf.concat([self.weights['node_proximity'][:, t, :], self.ini_homophily_matrix],
 												  -1)
-
+				# bsz*2d
 				link_embed_layer = tf.concat([user_latent_promixity[:, t, :], self.ini_homophily_vector], -1)
+
 				link_embed_layer = tf.layers.dense(inputs=link_embed_layer, units=self.embedding_size,
 												   activation=tf.nn.relu,
 												   kernel_regularizer=tf.contrib.layers.l2_regularizer(0.1),
@@ -249,7 +256,7 @@ class NJM:
 														kernel_regularizer=tf.contrib.layers.l2_regularizer(0.1),
 														name='link_mlp', reuse=True
 														)
-
+				# 输出是bsz * user_N
 				link_prediction = tf.matmul(link_embed_layer, link_embedding_matrix,
 											transpose_b=True) + self.biases['link_mlp_embeddings']
 
@@ -259,35 +266,45 @@ class NJM:
 																	 labels=self.train_predict_link_label[:, t],
 																	 logits=link_prediction)))
 
+				# 第一个step后可以知道当前的好友链接情况了
 				self.friend_record = self.train_predict_link_label[:, 0, :]
 			else:
+				# 左上角部分
+				# 下面是公式1
+				# T和U的元素乘法
 				user_friend_latent_matrix = tf.multiply(self.weights['transformation'],
 														self.weights['user_latent'][:, t - 1, :])
 
 
-
+				# 下面计算trust score f
+				## 当前p乘整体p
 				node_proximity = tf.matmul(user_latent_promixity[:, t - 1, :],
 										   self.weights['node_proximity'][:, t - 1, :], transpose_b=True)
-
+				## 这里是先过sigmoid然后过邻接矩阵，论文里是反过来
 				trust_score = tf.sigmoid(node_proximity)
+				# self.friend_record 是I
 				trust_score = tf.multiply(self.friend_record, trust_score)
+				# 这里做的就是算行和然后做分母
 				all = tf.reduce_sum(trust_score, keep_dims=True, axis=-1)
+
 				all_p = all + one_op
+				# 下面这行的意思是，all里面等于0的值填上1，因为下面做除法
 				all = tf.where(tf.equal(all, zero_op), all_p, all)
-				trust_score = tf.div(trust_score, all)
+				trust_score = tf.div(trust_score, all)	# 这样操作，那么trust score/行sum，相当于变成权重了，全零行还是0
+				# 这里就是公式里的f*Q，维度是bsz*d
 
 				user_friend_latent_vector = tf.matmul(trust_score, user_friend_latent_matrix)
 
 				# -------------------------
 				# add hidden layers here
-
+				# consumption_weigh是bsz长度，每个用户一个，这里好像是用来表示用户偏好受到消费行为影响的比例，剩下的就是受到好友影响的
 				user_latent_self = tf.multiply(consumption_weigh, tf.transpose(user_latent_vector[:, t - 1, :]))
 				user_latent_self = tf.transpose(user_latent_self)
 
 				user_friend_latent_vector = tf.multiply((1 - consumption_weigh),
 														tf.transpose(user_friend_latent_vector))
 				user_friend_latent_vector = tf.transpose(user_friend_latent_vector)
-
+				# 拼接放入线性层
 				embed_layer = tf.concat([user_latent_self, user_friend_latent_vector], -1)
 
 				user_output = tf.layers.dense(inputs=embed_layer, units=self.embedding_size,
@@ -318,10 +335,13 @@ class NJM:
 				homo_effect_by_weight = tf.multiply((1 - link_weigh), tf.transpose(homo_effect))
 				homo_effect_by_weight = tf.transpose(homo_effect_by_weight)
 
+				# 计算E
+				## 这是P
 				user_node_matrix = tf.multiply(self.weights['link_balance'],
 											   tf.transpose(self.weights['node_proximity'][:, t - 1, :]))
 				user_node_matrix = tf.transpose(user_node_matrix)
 
+				## 这是U
 				user_latent_matrix = tf.multiply((self.one_nodeN - self.weights['link_balance']),
 												 tf.transpose(self.weights['user_latent'][:, t - 1, :]))
 				user_latent_matrix = tf.transpose(user_latent_matrix)
@@ -329,25 +349,27 @@ class NJM:
 				user_embedding_matrix = tf.concat([user_node_matrix, user_latent_matrix], -1)
 				link_embed_layer = tf.concat([node_proximity_by_weight, homo_effect_by_weight], -1)
 
+				# 这里使用一层神经网络计算E，这里输入为2d，输出为userN*d
 				user_embedding_matrix = tf.layers.dense(inputs=user_embedding_matrix, units=self.embedding_size,
 														activation=tf.nn.relu,
 														kernel_regularizer=tf.contrib.layers.l2_regularizer(
 															0.1), name='link_mlp', reuse=True)
-
+				# u和p过mlp
 				link_embed_layer = tf.layers.dense(inputs=link_embed_layer, units=self.embedding_size,
 												   activation=tf.nn.relu,
 												   kernel_regularizer=tf.contrib.layers.l2_regularizer(
 													   0.1), name='link_mlp', reuse=True)
-
+				# h乘E
 				link_prediction = tf.matmul(link_embed_layer, user_embedding_matrix, transpose_b=True) + self.biases[
 					'link_mlp_embeddings']
 
+				# label的值是1，根据真实权重加权损失
 				tf.add_to_collection("predict_loss",
 									 self.alphaS * tf.reduce_sum(self.train_predict_weight[:, t] *
 																 tf.nn.sigmoid_cross_entropy_with_logits(
 																	 labels=self.train_predict_link_label[:, t],
 																	 logits=link_prediction)))
-
+				# 有点像公式11
 				tf.add_to_collection("predict_loss", self.alphaU * (tf.reduce_sum
 																			   (tf.reduce_sum(
 																			   tf.square(
@@ -383,7 +405,7 @@ class NJM:
 		tf.add_to_collection("predict_loss", tf.reduce_sum(reg_losses))
 		self.predict_rating_loss = tf.add_n(tf.get_collection("predict_loss"))
 
-
+		# test 部分
 		test_item_attr = tf.reshape(self.test_item_attr, [-1, self.item_attr_M])
 		test_item_attr_embed = tf.matmul(test_item_attr, self.weights['item_attr_embeddings'])
 
@@ -523,6 +545,7 @@ class NJM:
 				link[record[1]][record[0]] = 1
 
 			for record in one['link_predict_weight']:
+				# 有点问题，明明应该包括负采样的边，而且已经记录了权重但是全赋值为1
 				link_weight[record[1]][record[0]] = 1.0
 
 			user_id_list.append(one['user_id'])
@@ -546,14 +569,15 @@ class NJM:
 		spot_attr_list = []
 		rating_pre_list = []
 		friend_record_list = []
-		total = len(self.test_data)
+		# 下面错了，self.test_data是字典
+		total = len(self.test_data['ids'])
 
 		for id in range(self.batch_size):
 			if (id + batch_id * self.batch_size) > (total - 1):
 				fetch_id = (id + batch_id * self.batch_size) % total
 			else:
 				fetch_id = id + batch_id * self.batch_size
-
+			# print(f"test fetch id:{fetch_id}")
 			user_id = self.test_data['ids'][fetch_id][0]
 			spot_id = self.test_data['ids'][fetch_id][1]
 			spot_list = np.repeat(spot_id, self.train_T + 1)
@@ -567,20 +591,23 @@ class NJM:
 			if spot_id in self.test_data['spot_dict'].keys():
 				for record in self.test_data['spot_dict'][spot_id]:
 					spot_attr[record[2] + 1][record[0]] = record[1]
-
-			for link in self.test_data['links'][user_id]:
-				friend_record[link[0]] = 1.0
+			# if user_id not in self.test_data['links'].keys():
+			# 	print(user_id)
+			# 	raise KeyError("UserID KeyError")
+			if user_id in self.test_data['links'].keys():
+				for link in self.test_data['links'][user_id]:
+					friend_record[link[0]] = 1.0
 			user_id_list.append(user_id)
 			spot_id_list.append(spot_id)
 			spot_id_list_list.append(spot_list)
 			spot_attr_list.append(spot_attr)
 			friend_record_list.append(friend_record)
 			rating_pre_list.append(rating)
-
+		# print(user_id_list)
 		return user_id_list, spot_id_list, spot_id_list_list, spot_attr_list, friend_record_list, rating_pre_list
 
 	def train(self):
-		print_log_pth = "njm_log.txt"
+		print_log_pth = f"njm_log_{seed}.txt"
 		print_log = open(print_log_pth, 'w')
 		print_log.close()
 		with tf.Session() as self.sess:
@@ -605,6 +632,7 @@ class NJM:
 				total_batch = self.total_batch
 				starttime = datetime.datetime.now()
 				for i in tqdm(range(total_batch)):
+					# break
 					user_id_list, spot_id_list, spot_id_list_list, rating_indicator_list, spot_attr_list, rating_pre_list, link_list, link_weight_list \
 						= self.get_batch_data(i)
 
@@ -675,38 +703,45 @@ class NJM:
 
 					precision = 0.0
 					recall = 0.0
+					# 最后一个step的所有社交关系，{user1:[user2,user3,...],...}
 					for user_id in self.test_link['last_pre'].keys():
 						# print(user_id)
 						if len(self.test_link['last_pre'].keys()) >=1:
 							link_feed_dcit = {self.link_test_user_id: [user_id]}
+							# 这里输入好像只有userid，应该是直接过mlp打分
 							predict_link = self.sess.run(
 								(self.link_test_link_prediction),
 								feed_dict=link_feed_dcit)
 							candidate = np.arange(self.user_node_N - 1)
-							candidate = candidate + 1
+							candidate = candidate + 1	# 从1开始，跟用户编号对应
+							# viewed_link 训练集+测试集所有的好友关系列表
 							viewed_link = []
-
+							# last_pre 是从test数据集中获取的user_id的好友列表
 							for user_viewed in self.test_link['last_pre'][user_id]:
 								if user_viewed not in viewed_link:
 									viewed_link.append(user_viewed)
-
+							# till_record 最后一个step之前的好友关系列表
 							if user_id in self.test_link['till_record'].keys():
 								for user_viewed in self.test_link['till_record'][user_id]:
 									if user_viewed not in viewed_link:
 										viewed_link.append(user_viewed)
-
+							# 所有用户中没有跟当前用户链接的用户列表
 							candidate = np.array([x for x in candidate if x not in viewed_link])
 							# print(len(candidate))
+							# 随机抽100个负样本
 							candidate = random.sample(list(candidate), 100)
 							candidate_value = {}
 
 							for user in candidate:
+								# 模型对负样本的预测得分
 								candidate_value[user] = predict_link[0][user]
 							for user in self.test_link['last_pre'][user_id]:
+								# 模型对gt的打分
 								candidate_value[user] = predict_link[0][user]
 
 							candidate_value = sorted(candidate_value.items(), key=lambda item: item[1], reverse=True)
 							y_predict = []
+							# 选前5个打分最高的
 							for i in range(5):
 								y_predict.append(candidate_value[i][0])
 
@@ -740,11 +775,15 @@ class NJM:
 if __name__ == "__main__":
 	args = parse_args()
 	data_path, train_step, alpha, beta,u_counter ,s_counter,data_name = get_parameters(args)
-	seed_tensorflow(2022)
+	seed = 5423
+	seed_tensorflow(seed)
 	data = Dataset.Dataset(train_step=train_step,u_counter=u_counter,s_counter=s_counter,data_name=data_name)
 	data.generate()
 	njm = NJM(user_id_N=u_counter,user_attr_M=s_counter,item_id_N=s_counter,item_attr_M=u_counter,data_name=data_name,
 			  embedding_size=args.dimensions,train_T=train_step,beta=beta, alpha=alpha,epoch=args.epochs)
 	njm._init_graph()
-	njm.train()
+	# writer = tf.summary.FileWriter('/path/to/logs', tf.get_default_graph())
+	# writer.close()
+	# njm.train()
+
 
