@@ -117,7 +117,7 @@ class NJM:
 			'item_static': tf.Variable(tf.constant(0.1, shape=[self.item_node_N, self.embedding_size]), name='b4'),
 			# 没用到
 			'mlp_embeddings': tf.Variable(tf.constant(0.1, shape=[self.embedding_size]), name='b6'),
-			# 这个是mlp通用的bias，先不用
+
 			'link_mlp_embeddings': tf.Variable(tf.constant(0.1, shape=[self.user_node_N]), name='b7')
 
 		}
@@ -267,6 +267,7 @@ class NJM:
 																	 logits=link_prediction)))
 
 				# 第一个step后可以知道当前的好友链接情况了
+				# bsz*userN
 				self.friend_record = self.train_predict_link_label[:, 0, :]
 			else:
 				# 左上角部分
