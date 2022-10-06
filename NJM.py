@@ -371,16 +371,15 @@ class NJM:
 																	 labels=self.train_predict_link_label[:, t],
 																	 logits=link_prediction)))
 				# 有点像公式11
-				tf.add_to_collection("predict_loss", self.alphaU * (tf.reduce_sum
-																			   (tf.reduce_sum(
-																			   tf.square(
-																				   user_output - user_latent_vector[:,
-																								 t,
-																								 :]))) + tf.reduce_sum
-																			   (tf.reduce_sum(
-																			   tf.square(user_latent_promixity[:, t - 1,
-																						 :] - user_latent_promixity[:,
-																							  t, :])))))
+				tf.add_to_collection(
+					"predict_loss",
+					self.alphaU * (
+							tf.reduce_sum(
+								tf.reduce_sum(
+									tf.square(user_output - user_latent_vector[:,t,:]))) +
+							tf.reduce_sum(
+								tf.reduce_sum(
+									tf.square(user_latent_promixity[:, t - 1,:] - user_latent_promixity[:, t, :])))))
 
 				self.friend_record = self.friend_record + self.train_predict_link_label[:, t, :]
 
@@ -713,6 +712,8 @@ class NJM:
 							predict_link = self.sess.run(
 								(self.link_test_link_prediction),
 								feed_dict=link_feed_dcit)
+							# 下面这部分应该属于metric部分
+
 							candidate = np.arange(self.user_node_N - 1)
 							candidate = candidate + 1	# 从1开始，跟用户编号对应
 							# viewed_link 训练集+测试集所有的好友关系列表
@@ -785,6 +786,6 @@ if __name__ == "__main__":
 	njm._init_graph()
 	# writer = tf.summary.FileWriter('/path/to/logs', tf.get_default_graph())
 	# writer.close()
-	# njm.train()
+	njm.train()
 
 

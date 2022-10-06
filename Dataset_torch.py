@@ -17,6 +17,7 @@ import time,datetime
 import random
 import pickle
 
+import torch
 from torch.utils.data import Dataset, DataLoader
 
 def Normalization_gowalla(inX):
@@ -41,7 +42,7 @@ class Dataset4NJM(Dataset):
                 data_name: Name of Dataset
         '''
         self.data_name = data_name
-        if mode == 'train' or mode == 'test':
+        if mode == 'train' or mode == 'test' or mode == 'debug':
             self.mode = mode
         else:
             raise ValueError("Mode should be train or test!")
@@ -75,10 +76,9 @@ class Dataset4NJM(Dataset):
         self.train_step = train_step
 
 
-    #
     def generate(self):
         import os
-        if os.path.exists("data/inter_"+self.data_name+".pkl"):
+        if os.path.exists("data/train_"+ self.data_name+".pkl"):
             self.load_data()
         else:
             self.get_inter_data()
@@ -88,31 +88,19 @@ class Dataset4NJM(Dataset):
                 self.get_test_rating()
                 self.get_test_link()
 
+    # from memory_profiler import profile
+    #
+    # @profile(precision=4, stream=open("memory_profiler.log", "w+"))
     def load_data(self):
-        # inner_data
-        with open("data/inter_"+self.data_name+".pkl", 'rb') as f:
-            inter_data = pickle.load(f)
-        self.train_id_list = inter_data['ids']
-        self.user_dict = inter_data['user_dict']
-        self.spot_dict = inter_data['spot_dict']
-        self.links = inter_data['links']
-        self.links_array = inter_data['links_array']
-        print("finish getting inter_data...")
-
         if self.mode == 'train':
             # train_data
             with open("data/train_" + self.data_name+".pkl", 'rb') as f:
                 self.data = pickle.load(f)
             print("finish getting train_data...")
-        else:
+        elif self.mode == 'test':
             # test_data
             with open("data/test_rating_"+self.data_name+".pkl", 'rb') as f:
                 self.data = pickle.load(f)
-            self.test_id_list = self.data['ids']
-            self.test_rating_list = self.data['rating']
-            self.user_dict = self.data['user_dict']
-            self.spot_dict = self.data['spot_dict']
-            self.links = self.data['links']
             print("finish getting test rating...")
 
             # test link
@@ -121,6 +109,10 @@ class Dataset4NJM(Dataset):
             self.last_pre = test_link['last_pre']
             self.till_record = test_link['till_record']
             print("finish getting test link...")
+        elif self.mode == 'debug':
+            with open("data/temp.pkl", 'rb') as f:
+                self.data = pickle.load(f)
+            print("finish getting debug_data...")
 
     def get_inter_data(self):
         # 保存交互的记录，只用了训练集的数据
@@ -366,7 +358,7 @@ class Dataset4NJM(Dataset):
         if self.mode == 'train':
             # spot_attr[t,i]=r 表示用户i在t step对这条记录中的物品的打分是r
             # spot_attr记录的是某个物品被交互的总记录
-            spot_attr = np.zeros((train_T,user_node_N), dtype='float32')
+            spot_attr = np.zeros((train_T, user_node_N), dtype='float32')
 
             spot_attr[0] = np.random.normal(size=(user_node_N))
 
@@ -399,7 +391,7 @@ class Dataset4NJM(Dataset):
                 'spot_id_list': one['spot_id'],
                 # 构建一个长为train_T的向量，每个元素都是spot_id
                 'spot_id_list_list': np.repeat(one['spot_id'], train_T),
-                # rating_indicator表明在当前的用户和物品在哪些step发生了互动
+                # rating_indicator表明当前的用户和物品在哪些step发生了互动
                 'rating_indicator_list': one['rating_indicator'],
                 # rating_pre表明在当前的用户和物品在所有step上互动的评分
                 'rating_pre_list': one['rating_pre'],
@@ -420,7 +412,7 @@ class Dataset4NJM(Dataset):
             # rating_pre_list.append(one['rating_pre'])
             # link_list.append(link)
             # link_weight_list.append(link_weight)
-        else:
+        elif self.mode == 'test':
             # self.data['ids']所有的互动列表，[(user,item),...]
             user_id = self.data['ids'][fetch_id][0]
             spot_id = self.data['ids'][fetch_id][1]
@@ -446,7 +438,7 @@ class Dataset4NJM(Dataset):
             res = {
                 'user_id_list': user_id,
                 'spot_id_list': spot_id,
-                'spot_list_list': spot_list,
+                'spot_id_list_list': spot_list,
                 'spot_attr_list': spot_attr,
                 'friend_record_list': friend_record,
                 'rating_pre_list': rating
@@ -458,31 +450,84 @@ class Dataset4NJM(Dataset):
             # spot_attr_list.append(spot_attr)
             # friend_record_list.append(friend_record)
             # rating_pre_list.append(rating)
-
+        elif self.mode == 'debug':
+            return {k: v[fetch_id] for k, v in self.data.items()}
 
     def __len__(self):
         if self.mode == 'train':
-            length = len(self.data)
-        else:
-            length = len(self.data['ids'])
-        return length
+            return len(self.data)
+        elif self.mode == 'test':
+            return len(self.data['ids'])
+        elif self.mode == 'debug':
+            return len(self.data['user_id_list'])
 
-# def collect
+class MyDataLoader:
+    def __init__(
+            self,
+            dataset,
+            batch_size,
+            total_num,
+            device
+    ):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.total_num = total_num
+        self.total_batch_num = int(total_num / batch_size) + 1
+        self.device = device
+
+    def get_batch_data(self):
+        for batch_id in range(self.total_batch_num):
+            res = {}
+            for id in range(self.batch_size):
+                if (id + batch_id * self.batch_size) > (self.total_num - 1):
+                    fetch_id = (id + batch_id * self.batch_size) % self.total_num
+                else:
+                    fetch_id = id + batch_id * self.batch_size
+
+                one = self.dataset[fetch_id]
+
+                for k in one.keys():
+                    if k not in res.keys():
+                        res[k] = [one[k]]
+                    else:
+                        res[k].append(one[k])
+
+            for k in res.keys():
+                res[k] = np.array(res[k])
+
+            yield {k: torch.tensor(res[k], device=self.device) for k in res.keys()}
+
 
 def dataset_test():
     # 训练集测试
     mydataset = Dataset4NJM(mode='test')
-    mydataset.load_data()
+    mydataset.generate()
     print(mydataset[0])
-    myloader = DataLoader(mydataset, batch_size=16, shuffle=True)
-    for batch_x in myloader:
-        print(batch_x)
-        print('='*20)
-        break
+    batch_size = 16
+    # myloader = DataLoader(mydataset, batch_size=16, shuffle=True)
+    total_num = len(mydataset)
+    total_batch_num = int(total_num / batch_size) + 1
 
-    # 测试集
-    mydataset = Dataset4NJM(mode='test')
-    mydataset.load_data()
+    for batch_id in range(total_batch_num):
+        for id in range(batch_size):
+            if (id + batch_id * batch_size) > (total_num - 1):
+                fetch_id = (id + batch_id * batch_size) % total_num
+            else:
+                fetch_id = id + batch_id * batch_size
+            one = mydataset[fetch_id]
+
+            print(one)
+            print('=' * 20)
+            break
+
+    # for batch_x in myloader:
+    #     print(batch_x)
+    #     print('='*20)
+    #     break
+
+    # # 测试集
+    # mydataset = Dataset4NJM(mode='test')
+    # mydataset.load_data()
 
 
 if __name__ == '__main__':
