@@ -1,15 +1,15 @@
 # NJM
 ### Basic Usage
+Reference: https://github.com/NJMCODE2018/NJM
 
 #### Example
+You can change the train config in 'config/'
+Please first run NJM_train.ini and train at least 1 epoch to generate dataset from raw data<br/>
 execute the following command from the project home directory:<br/>
-	``python NJM.py --dataset 1 --dimensions 10 --epochs 20``
-
-#### Options
-You can check out the other options available to use with *NJM* using:<br/>
-	``python NJM.py --help``
+	``python run.py --config_pth NJM_train.ini``
+<br/>debug:<br/>
+	``python run.py --config_pth NJM_debug.ini``
 
 ## Environment Settings
-- Python version:  '3.6.3'
-- TensorFlow version:  '1.0.1'
-- Numpy version: '1.14.0'
+- Python version:  '3.6'
+- torch version: '1.10.2+cu113'
