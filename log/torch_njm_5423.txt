@@ -1,0 +1,217 @@
+==========Config==========
+TRAIN: 
+	epoch: 20
+	device: cuda
+	log_pth: ./log/
+	random_seed: 5423
+	mode: train
+OPTIM: 
+	learning_rate: 1e-3
+	common_weight_decay: 0.
+	mlp_weight_decay: 1e-1
+	balance_weight_decay: 1e-3
+	transformation_weight_decay: 1e-2
+	weights_weight_decay: 1e-1
+LOSS: 
+	alphaU: 0.01
+	alphaS: 0.1
+MODEL: 
+	user_id_N: 4630
+	user_attr_M: 26991
+	item_id_N: 26991
+	item_attr_M: 4630
+	embedding_size: 10
+	batch_size: 128
+	train_T: 11
+DATA: 
+	train_batch_size: 128
+	test_batch_size: 128
+	data_name: epinions
+=========================
+
+==========TRAIN BEGIN==========
+Train Epoch: 1
+Loss: 24.4222
+Valid Epoch: 1
+valid rating loss: 0.0548
+rmse: 0.234022
+precision: 0.213708
+recall: 0.360824
+f1: 0.268430
+
+Train Epoch: 2
+Loss: 14.9424
+Valid Epoch: 2
+valid rating loss: 0.0573
+rmse: 0.239421
+precision: 0.215730
+recall: 0.366086
+f1: 0.271480
+
+Train Epoch: 3
+Loss: 12.3884
+Valid Epoch: 3
+valid rating loss: 0.0597
+rmse: 0.244300
+precision: 0.212809
+recall: 0.359944
+f1: 0.267478
+
+Train Epoch: 4
+Loss: 11.0801
+Valid Epoch: 4
+valid rating loss: 0.0604
+rmse: 0.245809
+precision: 0.214831
+recall: 0.368202
+f1: 0.271344
+
+Train Epoch: 5
+Loss: 10.3499
+Valid Epoch: 5
+valid rating loss: 0.0613
+rmse: 0.247516
+precision: 0.219551
+recall: 0.370243
+f1: 0.275646
+
+Train Epoch: 6
+Loss: 9.9201
+Valid Epoch: 6
+valid rating loss: 0.0603
+rmse: 0.245547
+precision: 0.213933
+recall: 0.371142
+f1: 0.271416
+
+Train Epoch: 7
+Loss: 9.6568
+Valid Epoch: 7
+valid rating loss: 0.0611
+rmse: 0.247240
+precision: 0.214607
+recall: 0.367921
+f1: 0.271089
+
+Train Epoch: 8
+Loss: 9.4901
+Valid Epoch: 8
+valid rating loss: 0.0598
+rmse: 0.244588
+precision: 0.210562
+recall: 0.361536
+f1: 0.266128
+
+Train Epoch: 9
+Loss: 9.3814
+Valid Epoch: 9
+valid rating loss: 0.0603
+rmse: 0.245545
+precision: 0.220899
+recall: 0.378127
+f1: 0.278879
+
+Train Epoch: 10
+Loss: 9.3085
+Valid Epoch: 10
+valid rating loss: 0.0583
+rmse: 0.241463
+precision: 0.211011
+recall: 0.361086
+f1: 0.266365
+
+Train Epoch: 11
+Loss: 9.2585
+Valid Epoch: 11
+valid rating loss: 0.0585
+rmse: 0.241824
+precision: 0.216404
+recall: 0.368240
+f1: 0.272606
+
+Train Epoch: 12
+Loss: 9.2232
+Valid Epoch: 12
+valid rating loss: 0.0548
+rmse: 0.234101
+precision: 0.213933
+recall: 0.364588
+f1: 0.269644
+
+Train Epoch: 13
+Loss: 9.1980
+Valid Epoch: 13
+valid rating loss: 0.0567
+rmse: 0.238101
+precision: 0.206292
+recall: 0.354757
+f1: 0.260881
+
+Train Epoch: 14
+Loss: 9.1794
+Valid Epoch: 14
+valid rating loss: 0.0556
+rmse: 0.235733
+precision: 0.218652
+recall: 0.373820
+f1: 0.275917
+
+Train Epoch: 15
+Loss: 9.1656
+Valid Epoch: 15
+valid rating loss: 0.0515
+rmse: 0.226942
+precision: 0.214607
+recall: 0.361816
+f1: 0.269414
+
+Train Epoch: 16
+Loss: 9.1552
+Valid Epoch: 16
+valid rating loss: 0.0536
+rmse: 0.231547
+precision: 0.219775
+recall: 0.373277
+f1: 0.276660
+
+Train Epoch: 17
+Loss: 9.1472
+Valid Epoch: 17
+valid rating loss: 0.0584
+rmse: 0.241587
+precision: 0.211910
+recall: 0.360524
+f1: 0.266926
+
+Train Epoch: 18
+Loss: 9.1409
+Valid Epoch: 18
+valid rating loss: 0.0544
+rmse: 0.233151
+precision: 0.210112
+recall: 0.352022
+f1: 0.263155
+
+Train Epoch: 19
+Loss: 9.1358
+Valid Epoch: 19
+valid rating loss: 0.0585
+rmse: 0.241770
+precision: 0.210562
+recall: 0.361367
+f1: 0.266082
+
+Train Epoch: 20
+Loss: 9.1318
+Valid Epoch: 20
+valid rating loss: 0.0662
+rmse: 0.257305
+precision: 0.214157
+recall: 0.368296
+f1: 0.270831
+
+best rmse: 0.2269
+best precision: 0.2209
+best recall: 0.3781
+best f1: 0.2789
+
