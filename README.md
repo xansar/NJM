@@ -6,7 +6,7 @@ Reference: https://github.com/NJMCODE2018/NJM
 You can change the train config in config/
 execute the following command from the project home directory:<br/>
 	``python run.py --config_pth NJM_train.ini``
-debug:
+<br/>debug:
 	``python run.py --config_pth NJM_train.ini``
 
 ## Environment Settings
